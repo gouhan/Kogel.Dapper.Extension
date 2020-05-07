@@ -127,13 +127,15 @@ namespace Kogel.Repository
 			//存在主键写入自增id
 			if (!string.IsNullOrEmpty(entityObject.Identitys))
 			{
-				var id = this.CommandSet()
-				   .InsertIdentity(entity);
-				//写入主键数据
-				entityObject.EntityFieldList
-					.First(x => x.IsIdentity).PropertyInfo
-					.SetValue(entity, id);
-				return 1;
+				//var id = this.CommandSet()
+				//   .InsertIdentity(entity);
+				////写入主键数据
+				//entityObject.EntityFieldList
+				//	.First(x => x.IsIdentity).PropertyInfo
+				//	.SetValue(entity, id);
+				//return 1;
+				return this.CommandSet()
+					.Insert(entity);
 			}
 			else
 			{
