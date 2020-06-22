@@ -229,7 +229,7 @@ namespace Kogel.Dapper.Extension.Core.Interfaces
 		/// <param name="Param"></param>
 		/// <param name="excludeFields"></param>
 		/// <returns></returns>
-		public virtual string ResolveUpdates<T>(T t, DynamicParameters Param, string[] excludeFields)
+		public virtual string ResolveUpdates<T>(T t, DynamicParameters param, string[] excludeFields)
 		{
 			var entity = EntityCache.QueryEntity(t.GetType());
 			var properties = entity.Properties;
@@ -264,8 +264,9 @@ namespace Kogel.Dapper.Extension.Core.Interfaces
 				{
 					builder.Append(",");
 				}
-				builder.Append($"{providerOption.CombineFieldName(name)}={providerOption.ParameterPrefix}Update_{name}");
-				Param.Add($"{providerOption.ParameterPrefix}Update_{name}", value);
+				string paramName = $"{providerOption.ParameterPrefix}Update_{param.ParameterNames.Count()}";
+				builder.Append($"{providerOption.CombineFieldName(name)}={paramName}");
+				param.Add($"{paramName}", value);
 			}
 			builder.Insert(0, " SET ");
 			return builder.ToString();

@@ -73,12 +73,8 @@ namespace Kogel.Dapper.Extension
 		public override SqlProvider FormatToPageList<T>(int pageIndex, int pageSize)
 		{
 			var orderbySql = ResolveExpression.ResolveOrderBy();
-			if (string.IsNullOrEmpty(orderbySql))
-				throw new DapperExtensionException("order by takes precedence over pagelist");
 
 			var selectSql = ResolveExpression.ResolveSelect(null);
-			//sqlserver需要处理下select,rownum时候
-			selectSql = new Regex("SELECT").Replace(selectSql, "", 1).Replace("DISTINCT", "");
 
 			var fromTableSql = FormatTableName();
 
@@ -92,9 +88,20 @@ namespace Kogel.Dapper.Extension
 
 			var havingSql = ResolveExpression.ResolveHaving();
 
+			//SqlString = $@"SELECT T2.* FROM    ( 
+   //                         SELECT T.*,ROW_NUMBER() OVER (ORDER BY (SELECT 0)) AS ROWNUMBER FROM(
+   //                         {selectSql}
+   //                         {fromTableSql} {nolockSql}{joinSql}
+   //                         {whereSql}
+   //                         {groupSql}
+   //                         {havingSql}
+   //                         {orderbySql}
+   //                         )T
+   //                         ) T2
+   //                         WHERE T2.ROWNUMBER BETWEEN {((pageIndex - 1) * pageSize) + 1} AND {pageIndex * pageSize};";
 			SqlString = $@"SELECT T.* FROM    ( 
-                            SELECT {(Context.Set.IsDistinct ? "DISTINCT" : "")} ROW_NUMBER() OVER ( {orderbySql} ) AS ROWNUMBER,
-                            {selectSql}
+                            SELECT ROW_NUMBER() OVER ( {orderbySql} ) AS ROWNUMBER,
+                            {(new Regex("SELECT").Replace(selectSql, "", 1))}
                             {fromTableSql} {nolockSql}{joinSql}
                             {whereSql}
                             {groupSql}
@@ -118,7 +125,19 @@ namespace Kogel.Dapper.Extension
 			string noneSql = "";
 			var joinSql = ResolveExpression.ResolveJoinSql(JoinList, ref noneSql);
 
-			SqlString = $"{selectSql} {fromTableSql} {nolockSql} {joinSql} {whereSql} ";
+			if (!Context.Set.IsDistinct)
+				SqlString = $"{selectSql} {fromTableSql} {nolockSql} {joinSql} {whereSql} ";
+			else
+			{
+				//字段解析字符
+				string countBySql = ResolveExpression.ResolveSelect(null);
+
+				SqlString = $@"SELECT COUNT(*) FROM(
+                                {countBySql} {fromTableSql} {nolockSql}
+                                {joinSql}
+                                {whereSql}
+                                 )T";
+			}
 
 			return this;
 		}
