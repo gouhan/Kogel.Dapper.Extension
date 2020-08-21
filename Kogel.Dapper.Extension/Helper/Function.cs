@@ -47,7 +47,7 @@ namespace Kogel.Dapper.Extension
         /// <param name="left"></param>
         /// <param name="right"></param>
         /// <returns></returns>
-        public static T Concact<T>(T left, T right)
+        public static T Concat<T>(T left, T right)
         {
             return default(T);
         }
@@ -60,6 +60,27 @@ namespace Kogel.Dapper.Extension
         /// <param name="right"></param>
         /// <returns></returns>
         public static T IfNull<T>(T left, T right)
+        {
+            return default(T);
+        }
+
+        /// <summary>
+        /// 拼接sql
+        /// </summary>
+        /// <param name="sql"></param>
+        /// <returns></returns>
+        public static T ConcatSql<T>(string sql)
+        {
+            return default(T);
+        }
+
+        /// <summary>
+        /// 拼接sql
+        /// </summary>
+        /// <param name="sql"></param>
+        /// <param name="param"></param>
+        /// <returns></returns>
+        public static T ConcatSql<T>(string sql, object param)
         {
             return default(T);
         }

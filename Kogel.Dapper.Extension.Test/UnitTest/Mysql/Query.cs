@@ -26,6 +26,8 @@ namespace Kogel.Dapper.Extension.Test.UnitTest.Mysql
     public class Query
     {
         string mysqlConnection = "Server=localhost;Database=Qx_Sport_Common;Uid=root;Pwd=A5101264a;";
+
+        protected User users { get; set; }
         public void Test()
         {
             //Sql执行前
@@ -51,11 +53,11 @@ namespace Kogel.Dapper.Extension.Test.UnitTest.Mysql
 
             //Thread thread = new Thread(() =>
             //{
-            //	//执行前
-            //	SqlMapper.Aop.OnExecuting += (CommandDefinition Command) =>
-            //	{
+            ////执行前
+            //SqlMapper.Aop.OnExecuting += (CommandDefinition Command) =>
+            //{
 
-            //	};
+            //};
             //	//执行后
             //	SqlMapper.Aop.OnExecuted += (CommandDefinition Command) =>
             //	{
@@ -73,14 +75,18 @@ namespace Kogel.Dapper.Extension.Test.UnitTest.Mysql
             {
                 EntityCache.Register(typeof(AdminUser));
 
+                string[] names = new string[] { "test", "test1" };
+                users = new User() { UserName = "test" };
 
                 var user = conn.QuerySet<User>()
-                   .Where(x => x.UserName == "test")
-                   .Get(x => new UserDetailDTO()
+                   // .Where(x => x.UserName == users.UserName && x.Password == "test" && x.Password == "test" && x.Password == "test")
+                   .Where(x => x.Id.In(new int[] { 1, 2, 3 }) && x.UserName.In(names))
+                   .Where(x => x.Id == 1)
+                   .PageList(1, 10, x => new UserDetailDTO()
                    {
                        Id = x.Id,
                        FullName = x.FullName,
-                       UserName = x.UserName,
+                       UserName = Function.ConcatSql<string>(" Concat(UserName,@aaa) ", new { aaa = "ss" }),
                        RoleId = x.RoleId,
                        Role = conn.QuerySet<Role>().Where(y => y.Id == x.RoleId).Get(),
                    });

@@ -1,6 +1,6 @@
-﻿using Dapper;
+using Dapper;
 using Kogel.Dapper.Extension.Core.Interfaces;
-using Kogel.Dapper.Extension.Exception;
+using Kogel.Dapper.Extension;
 using Kogel.Dapper.Extension.Extension;
 using Kogel.Dapper.Extension.Model;
 using System;
@@ -84,10 +84,39 @@ namespace Kogel.Dapper.Extension.Expressions
             var expTypeName = node.Expression?.GetType().FullName ?? "";
             if (expTypeName == "System.Linq.Expressions.TypedParameterExpression" || expTypeName == "System.Linq.Expressions.PropertyExpression")
             {
-                var member = EntityCache.QueryEntity(node.Expression.Type);
-                string fieldName = member.FieldPairs[node.Member.Name];
-                string field = (providerOption.IsAsName ? member.GetAsName(providerOption) : "") + providerOption.CombineFieldName(fieldName);
-                SpliceField.Append(field);
+                //验证是否是可空对象
+                if (!node.Expression.Type.FullName.Contains("System.Nullable")) //(node.Expression.Type != typeof(Nullable))
+                {
+                    //是否是成员值对象
+                    if (expTypeName == "System.Linq.Expressions.PropertyExpression" && node.IsConstantExpression())
+                    {
+                        //参数
+                        string paramName = $"{providerOption.ParameterPrefix}Member_Param_{Index}_{Param.ParameterNames.Count()}";
+                        //值
+                        object nodeValue = node.ToConvertAndGetValue();
+                        //设置sql
+                        SpliceField.Append(paramName);
+                        Param.Add(paramName, nodeValue);
+                        return node;
+                    }
+                    var member = EntityCache.QueryEntity(node.Expression.Type);
+                    string fieldName = member.FieldPairs[node.Member.Name];
+                    string field = (providerOption.IsAsName ? member.GetAsName(providerOption) : "") + providerOption.CombineFieldName(fieldName);
+                    SpliceField.Append(field);
+                }
+                else
+                {
+                    //可空函数
+                    Visit(node.Expression);
+                    switch (node.Member.Name)
+                    {
+                        case "HasValue":
+                            {
+                                this.SpliceField.Append(" IS NOT NULL");
+                            }
+                            break;
+                    }
+                }
             }
             else
             {
@@ -215,7 +244,7 @@ namespace Kogel.Dapper.Extension.Expressions
                         SpliceField.Append(")");
                     }
                     break;
-                case "Concact":
+                case "Concat":
                     {
                         SpliceField.Append("Concat(");
                         Visit(node.Arguments[0]);
@@ -231,6 +260,16 @@ namespace Kogel.Dapper.Extension.Expressions
                         SpliceField.Append(",");
                         Visit(node.Arguments[1]);
                         SpliceField.Append(")");
+                    }
+                    break;
+                case "ConcatSql":
+                    {
+                        SpliceField.Append(node.Arguments[0].ToConvertAndGetValue());
+                        // Param
+                        if (node.Arguments.Count > 1)
+                        {
+                            Param.AddDynamicParams(node.Arguments[1].ToConvertAndGetValue());
+                        }
                     }
                     break;
                 #endregion
@@ -295,10 +334,32 @@ namespace Kogel.Dapper.Extension.Expressions
     /// </summary>
     public class WhereExpressionVisitor : BaseExpressionVisitor
     {
-        private string FieldName { get; set; } = "";//字段
-        private string ParamName { get => GetParamName(); }//带参数标识的
+        /// <summary>
+        /// 参数标记
+        /// </summary>
+        internal string Prefix { get; set; }
+
+        /// <summary>
+        /// 字段
+        /// </summary>
+        private string FieldName { get; set; } = "";
+
+        /// <summary>
+        /// 带参数标识的参数名称
+        /// </summary>
+        private string ParamName { get => $"{GetParamName()}{Prefix}"; }
+
+        /// <summary>
+        /// 拼接sql
+        /// </summary>
         internal new StringBuilder SpliceField { get; set; }
+
+        /// <summary>
+        /// 参数目录
+        /// </summary>
         internal new DynamicParameters Param { get; set; }
+
+
         public WhereExpressionVisitor(SqlProvider provider) : base(provider)
         {
             this.SpliceField = new StringBuilder();
@@ -364,6 +425,7 @@ namespace Kogel.Dapper.Extension.Expressions
             }
             return node;
         }
+
         /// <summary>
         /// 重写成员对象，得到字段名称
         /// </summary>
@@ -378,6 +440,14 @@ namespace Kogel.Dapper.Extension.Expressions
                 //验证是否是可空对象
                 if (!node.Expression.Type.FullName.Contains("System.Nullable")) //(node.Expression.Type != typeof(Nullable))
                 {
+                    //是否是成员值对象
+                    if (expTypeName == "System.Linq.Expressions.PropertyExpression" && node.IsConstantExpression())
+                    {
+                        SpliceField.Append(ParamName);
+                        object nodeValue = node.ToConvertAndGetValue();
+                        Param.Add(ParamName, nodeValue);
+                        return node;
+                    }
                     var member = EntityCache.QueryEntity(node.Expression.Type);
                     string asName = string.Empty;
                     if (providerOption.IsAsName)
@@ -468,6 +538,7 @@ namespace Kogel.Dapper.Extension.Expressions
             }
             return node;
         }
+
         /// <summary>
         /// 解析函数
         /// </summary>
@@ -628,7 +699,12 @@ namespace Kogel.Dapper.Extension.Expressions
                             var navigationExpression = new WhereExpression(node.Arguments[1] as LambdaExpression, $"_Navi_{navigationTable.PropertyInfo.Name}", Provider);
                             //添加sql和参数
                             this.SpliceField.Append($" 1=1 {navigationExpression.SqlCmd}");
-                            this.Param.AddDynamicParams(navigationExpression.Param);
+                            foreach (var paramName in navigationExpression.Param.ParameterNames)
+                            {
+                                //相同的key会直接顶掉
+                                this.Param.Add(paramName, navigationExpression.Param.Get<object>(paramName));
+                            }
+                            //this.Param.AddDynamicParams(navigationExpression.Param);
                         }
                         else
                         {
@@ -717,7 +793,7 @@ namespace Kogel.Dapper.Extension.Expressions
                         SpliceField.Append(")");
                     }
                     break;
-                case "Concact":
+                case "Concat":
                     {
                         SpliceField.Append("Concat(");
                         Visit(node.Arguments[0]);
@@ -733,6 +809,16 @@ namespace Kogel.Dapper.Extension.Expressions
                         SpliceField.Append(",");
                         Visit(node.Arguments[1]);
                         SpliceField.Append(")");
+                    }
+                    break;
+                case "ConcatSql":
+                    {
+                        SpliceField.Append(node.Arguments[0].ToConvertAndGetValue());
+                        // Param
+                        if (node.Arguments.Count > 1)
+                        {
+                            Param.AddDynamicParams(node.Arguments[1].ToConvertAndGetValue());
+                        }
                     }
                     break;
                 #endregion
@@ -803,11 +889,12 @@ namespace Kogel.Dapper.Extension.Expressions
     /// </summary>
     public class BinaryExpressionVisitor : WhereExpressionVisitor
     {
-        public BinaryExpressionVisitor(BinaryExpression expression, SqlProvider provider, int index = 0) : base(provider)
+        public BinaryExpressionVisitor(BinaryExpression expression, SqlProvider provider, int index = 0, string prefix = null) : base(provider)
         {
             SpliceField = new StringBuilder();
             Param = new DynamicParameters();
             base.Index = index;
+            base.Prefix = prefix;
             SpliceField.Append("(");
             Visit(expression);
             SpliceField.Append(")");

@@ -4,11 +4,10 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using System.Data;
-using Kogel.Dapper.Extension.Exception;
+using Kogel.Dapper.Extension;
 using Kogel.Dapper.Extension.Core.SetC;
 using Kogel.Dapper.Extension.Core.SetQ;
 using Kogel.Repository.Interfaces;
-using Kogel.Dapper.Extension;
 using Dapper;
 using Kogel.Dapper.Extension.Core.Interfaces;
 using Kogel.Dapper.Extension.Extension;
@@ -133,8 +132,10 @@ namespace Kogel.Repository
 			//设置参数
 			DynamicParameters param = new DynamicParameters();
 			param.Add(entityObject.Identitys, id);
+			
 			return this.QuerySet()
-				.Where($"{entityObject.Identitys}={OptionsBuilder.Provider.ProviderOption.ParameterPrefix}{entityObject.Identitys}", param)
+				.Where($@"{this.OptionsBuilder.Provider.ProviderOption.CombineFieldName(entityObject.Identitys)}
+                 ={OptionsBuilder.Provider.ProviderOption.ParameterPrefix}{entityObject.Identitys}", param)
 				.Get();
 		}
 
@@ -180,7 +181,8 @@ namespace Kogel.Repository
 			DynamicParameters param = new DynamicParameters();
 			param.Add(entityObject.Identitys, id);
 			return this.CommandSet()
-				.Where($"{entityObject.Identitys}={OptionsBuilder.Provider.ProviderOption.ParameterPrefix}{entityObject.Identitys}", param)
+				.Where($@"{this.OptionsBuilder.Provider.ProviderOption.CombineFieldName(entityObject.Identitys)}
+                 ={OptionsBuilder.Provider.ProviderOption.ParameterPrefix}{entityObject.Identitys}", param)
 				.Delete();
 		}
 
@@ -202,7 +204,8 @@ namespace Kogel.Repository
 			DynamicParameters param = new DynamicParameters();
 			param.Add(entityObject.Identitys, id);
 			return this.CommandSet()
-				.Where($"{entityObject.Identitys}={OptionsBuilder.Provider.ProviderOption.ParameterPrefix}{entityObject.Identitys}", param)
+				.Where($@"{this.OptionsBuilder.Provider.ProviderOption.CombineFieldName(entityObject.Identitys)}
+                ={OptionsBuilder.Provider.ProviderOption.ParameterPrefix}{entityObject.Identitys}", param)
 				.Update(entity);
 		}
 

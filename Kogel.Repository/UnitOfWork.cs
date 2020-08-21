@@ -2,10 +2,13 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Dapper;
+using Kogel.Dapper.Extension;
+using Kogel.Dapper.Extension.Helper;
 using Kogel.Repository.Interfaces;
 
 namespace Kogel.Repository
@@ -23,6 +26,11 @@ namespace Kogel.Repository
         public IDbTransaction Transaction { get; set; }
 
         /// <summary>
+        /// 是否第一次提交
+        /// </summary>
+        private bool IsFirstCommit { get; set; } = false;
+
+        /// <summary>
         /// 
         /// </summary>
         /// <param name="connection"></param>
@@ -37,10 +45,12 @@ namespace Kogel.Repository
         /// <param name="transactionMethod"></param>
         /// <param name="IsolationLevel"></param>
         /// <returns></returns>
+        [UnitOfWorkAttrbute]
         public IUnitOfWork BeginTransaction(Action transactionMethod, IsolationLevel IsolationLevel = IsolationLevel.Serializable)
         {
             if (Connection.State == ConnectionState.Closed)
                 Connection.Open();
+
             if (Transaction == null)
                 Transaction = Connection.BeginTransaction(IsolationLevel);
             try
@@ -50,8 +60,8 @@ namespace Kogel.Repository
             }
             catch (Exception ex)
             {
-                if (Transaction != null)
-                    Transaction.Rollback();
+                IsFirstCommit = true;
+                this.Rollback();
                 throw ex;
             }
             finally
@@ -70,23 +80,33 @@ namespace Kogel.Repository
             //相同数据库链接才会进入单元事务
             if (command.Connection.ConnectionString.Contains(this.Connection.ConnectionString))
             {
-                //是否进入过工作单元(防止循环嵌套UnitOfWork)
-                if (!command.IsUnifOfWork)
+                lock (command.Connection)
                 {
-                    command.IsUnifOfWork = true;
-                    command.Connection = this.Connection;
-                    command.Transaction = this.Transaction;
+                    //是否进入过工作单元(防止循环嵌套UnitOfWork)
+                    if (!command.IsUnifOfWork)
+                    {
+                        command.IsUnifOfWork = true;
+                        command.Connection = this.Connection;
+                        command.Transaction = this.Transaction;
+                    }
                 }
             }
         }
-
+        private static object transactionLock = new object();
         /// <summary>
         /// 提交
         /// </summary>
         public void Commit()
         {
             if (Transaction != null)
-                Transaction.Commit();
+            {
+                lock (transactionLock)
+                    if (!IsAnyUnitOfWork() && !IsFirstCommit)
+                    {
+                        IsFirstCommit = true;
+                        Transaction.Commit();
+                    }
+            }
         }
 
         /// <summary>
@@ -95,7 +115,12 @@ namespace Kogel.Repository
         public void Rollback()
         {
             if (Transaction != null)
-                Transaction.Rollback();
+                lock (transactionLock)
+                    if (!IsAnyUnitOfWork() && !IsFirstCommit)
+                    {
+                        IsFirstCommit = true;
+                        Transaction.Rollback();
+                    }
         }
 
         /// <summary>
@@ -113,5 +138,34 @@ namespace Kogel.Repository
         }
 
         ~UnitOfWork() => this.Dispose();
+
+        /// <summary>
+        /// 是否存在最外层嵌套单元
+        /// </summary>
+        /// <returns></returns>
+        private static bool IsAnyUnitOfWork()
+        {
+            //嵌套的Unitofwork数量
+            var count = 0;
+            //当前堆栈信息
+            StackTrace st = new StackTrace();
+            StackFrame[] sfs = st.GetFrames();
+            for (int i = 1; i < sfs.Length; ++i)
+            {
+                //非用户代码,系统方法及后面的都是系统调用，不获取用户代码调用结束
+                if (StackFrame.OFFSET_UNKNOWN == sfs[i].GetILOffset()) break;
+                var method = sfs[i].GetMethod();//方法
+                if (method.CustomAttributes.Any(x => x.AttributeType == typeof(UnitOfWorkAttrbute)))
+                    count++;
+            }
+            return count > 0;
+        }
+
+        /// <summary>
+        /// 仓储方法标记 （内部使用）
+        /// </summary>
+        private sealed class UnitOfWorkAttrbute : Attribute
+        {
+        }
     }
 }
